@@ -1,43 +1,32 @@
-```gitignore
-# Build artifacts
+```
+# Compiled and build artifacts
 *.o
 *.obj
-*.exe
-*.dll
-*.so
-*.a
 *.out
-
 # Dependencies
-node_modules/
 venv/
 .venv/
 __pycache__/
-.mypy_cache/
-.pytest_cache/
-dist/
-build/
-target/
-.gradle/
-
-# Editors
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# System files
-.DS_Store
-Thumbs.db
-.env
-.env.local
-*.env.*
-
 # Logs and temp files
 *.log
 *.tmp
-
-# Compressed files
+*.swp
+# Editors
+.vscode/
+.idea/
+# Environment
+.env
+.env.local
+*.env.*
+# Coverage
+coverage/
+htmlcov/
+.coverage
+# Build directories
+build/
+dist/
+target/
+# Compression
 *.zip
 *.gz
 *.tar
