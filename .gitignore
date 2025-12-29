@@ -1,0 +1,34 @@
+```
+# Executable files
+scheduler_simulator
+
+# Visual Studio files
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.user
+*.userosscache
+*.suo
+*.sdf
+*.opensdf
+*.vc.db
+*.vc.vcproj.*
+
+# Build artifacts
+*.obj
+*.exe
+*.dll
+*.lib
+*.so
+*.dylib
+*.a
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+
+# OS generated files
+.DS_Store
+Thumbs.db
+```

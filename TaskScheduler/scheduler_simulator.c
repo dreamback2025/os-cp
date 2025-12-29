@@ -1,0 +1,572 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include <windows.h>
+#include <conio.h>
+
+#define MAX_TASKS 10
+#define MAX_NAME_LENGTH 50
+#define MAX_LOG_SIZE 1000
+
+// 任务结构体
+typedef struct {
+    int id;
+    char name[MAX_NAME_LENGTH];
+    int priority;
+    int burst_time;        // 执行时间
+    int remaining_time;    // 剩余执行时间
+    int arrival_time;      // 到达时间
+    int start_time;        // 开始执行时间
+    int completion_time;   // 完成时间
+    int waiting_time;      // 等待时间
+    int turnaround_time;   // 周转时间
+    int state;             // 0: 就绪, 1: 运行, 2: 完成
+} Task;
+
+// 日志记录结构体
+typedef struct {
+    int time;
+    int task_id;
+    char status[20];  // "RUNNING", "READY", "COMPLETED", "IDLE"
+    int remaining_time;
+} ExecutionLog;
+
+// 全局变量
+Task tasks[MAX_TASKS];
+ExecutionLog execution_log[MAX_LOG_SIZE];
+int task_count = 0;
+int log_count = 0;
+int current_time = 0;
+int current_task_index = -1;
+int quantum = 2;  // 时间片长度
+int time_quantum_counter = 0;  // 当前时间片计数器
+
+// 函数声明
+void print_menu();
+void add_task_manual();
+void add_task_auto();
+void run_scheduler();
+void print_task_list();
+void print_execution_log();
+void save_log_to_file();
+void load_log_from_file();
+void replay_log();
+void clear_screen();
+
+int main() {
+    srand(time(NULL));  // 初始化随机数种子
+    
+    printf("=== 多道程序设计技术 - 进程/线程调度模拟器 ===\n");
+    printf("实现时间片轮转调度算法\n\n");
+    
+    int choice;
+    while (1) {
+        print_menu();
+        scanf("%d", &choice);
+        getchar(); // 消费换行符
+        
+        switch (choice) {
+            case 1:
+                add_task_manual();
+                break;
+            case 2:
+                add_task_auto();
+                break;
+            case 3:
+                if (task_count == 0) {
+                    printf("没有任务可以运行！请先添加任务。\n");
+                    system("pause");
+                    break;
+                }
+                run_scheduler();
+                break;
+            case 4:
+                print_task_list();
+                system("pause");
+                break;
+            case 5:
+                print_execution_log();
+                system("pause");
+                break;
+            case 6:
+                save_log_to_file();
+                system("pause");
+                break;
+            case 7:
+                load_log_from_file();
+                system("pause");
+                break;
+            case 8:
+                replay_log();
+                system("pause");
+                break;
+            case 9:
+                printf("退出程序。\n");
+                return 0;
+            default:
+                printf("无效选择，请重新输入。\n");
+                system("pause");
+                break;
+        }
+    }
+    
+    return 0;
+}
+
+void print_menu() {
+    clear_screen();
+    printf("\n=== 多道程序设计技术 - 进程/线程调度模拟器 ===\n");
+    printf("当前时间: %d, 时间片: %d\n", current_time, quantum);
+    printf("任务数量: %d\n\n", task_count);
+    
+    printf("请选择操作:\n");
+    printf("1. 手工输入任务\n");
+    printf("2. 自动产生任务\n");
+    printf("3. 运行调度器 (按任意键前进一个时间单位)\n");
+    printf("4. 显示任务列表\n");
+    printf("5. 显示执行日志\n");
+    printf("6. 保存执行日志到文件\n");
+    printf("7. 从文件加载执行日志\n");
+    printf("8. 重放执行日志\n");
+    printf("9. 退出\n");
+    printf("请输入选择 (1-9): ");
+}
+
+void add_task_manual() {
+    if (task_count >= MAX_TASKS) {
+        printf("任务数量已达上限！\n");
+        return;
+    }
+    
+    Task new_task;
+    new_task.id = task_count + 1;
+    
+    printf("添加任务 %d:\n", new_task.id);
+    printf("任务名称: ");
+    scanf("%s", new_task.name);
+    printf("优先级 (1-10): ");
+    scanf("%d", &new_task.priority);
+    printf("执行时间: ");
+    scanf("%d", &new_task.burst_time);
+    printf("到达时间: ");
+    scanf("%d", &new_task.arrival_time);
+    
+    new_task.remaining_time = new_task.burst_time;
+    new_task.state = 0; // 就绪状态
+    new_task.start_time = -1;
+    new_task.completion_time = -1;
+    new_task.waiting_time = 0;
+    new_task.turnaround_time = 0;
+    
+    tasks[task_count] = new_task;
+    task_count++;
+    
+    printf("任务 %s 添加成功！\n", new_task.name);
+}
+
+void add_task_auto() {
+    if (task_count >= MAX_TASKS) {
+        printf("任务数量已达上限！\n");
+        return;
+    }
+    
+    Task new_task;
+    new_task.id = task_count + 1;
+    sprintf(new_task.name, "Task_%d", new_task.id);
+    new_task.priority = rand() % 10 + 1;
+    new_task.burst_time = rand() % 10 + 1;
+    new_task.arrival_time = rand() % 5;
+    new_task.remaining_time = new_task.burst_time;
+    new_task.state = 0; // 就绪状态
+    new_task.start_time = -1;
+    new_task.completion_time = -1;
+    new_task.waiting_time = 0;
+    new_task.turnaround_time = 0;
+    
+    tasks[task_count] = new_task;
+    task_count++;
+    
+    printf("自动添加任务: %s, 优先级: %d, 执行时间: %d, 到达时间: %d\n", 
+           new_task.name, new_task.priority, new_task.burst_time, new_task.arrival_time);
+}
+
+void run_scheduler() {
+    if (task_count == 0) return;
+    
+    // 重置调度状态
+    current_time = 0;
+    current_task_index = -1;
+    time_quantum_counter = 0;
+    log_count = 0;
+    
+    // 重置任务状态
+    for (int i = 0; i < task_count; i++) {
+        tasks[i].remaining_time = tasks[i].burst_time;
+        tasks[i].state = 0; // 就绪状态
+        tasks[i].start_time = -1;
+        tasks[i].completion_time = -1;
+        tasks[i].waiting_time = 0;
+        tasks[i].turnaround_time = 0;
+    }
+    
+    int remaining_tasks = task_count;
+    int last_task_index = -1;  // 上一个运行的任务
+    
+    printf("开始调度... 按任意键前进一个时间单位，按 'q' 退出调度\n\n");
+    
+    while (remaining_tasks > 0) {
+        int task_to_run = -1;
+        
+        // 检查是否有新任务到达
+        for (int i = 0; i < task_count; i++) {
+            if (tasks[i].arrival_time == current_time && tasks[i].state != 2) {
+                tasks[i].state = 0; // 就绪状态
+                printf("时间 %d: 任务 %s 到达\n", current_time, tasks[i].name);
+            }
+        }
+        
+        // 查找就绪队列中的任务
+        int ready_task_found = 0;
+        for (int i = 0; i < task_count; i++) {
+            if (tasks[i].state == 0 && tasks[i].arrival_time <= current_time && tasks[i].remaining_time > 0) {
+                ready_task_found = 1;
+                break;
+            }
+        }
+        
+        if (ready_task_found) {
+            // 实现轮转调度
+            // 如果当前没有任务运行，或者当前任务已完成，或者时间片用完，则切换任务
+            if (current_task_index == -1 || tasks[current_task_index].remaining_time <= 0 || time_quantum_counter >= quantum) {
+                // 寻找下一个就绪任务
+                int start_search = (current_task_index == -1) ? 0 : (current_task_index + 1) % task_count;
+                for (int i = 0; i < task_count; i++) {
+                    int idx = (start_search + i) % task_count;
+                    if (tasks[idx].state == 0 && tasks[idx].arrival_time <= current_time && tasks[idx].remaining_time > 0) {
+                        if (current_task_index != idx) {
+                            // 记录旧任务的切换日志
+                            if (current_task_index != -1 && tasks[current_task_index].remaining_time > 0) {
+                                if (log_count < MAX_LOG_SIZE) {
+                                    execution_log[log_count].time = current_time;
+                                    execution_log[log_count].task_id = tasks[current_task_index].id;
+                                    strcpy(execution_log[log_count].status, "READY");
+                                    execution_log[log_count].remaining_time = tasks[current_task_index].remaining_time;
+                                    log_count++;
+                                }
+                            }
+                        }
+                        current_task_index = idx;
+                        time_quantum_counter = 0; // 重置时间片计数器
+                        
+                        if (tasks[current_task_index].start_time == -1) {
+                            tasks[current_task_index].start_time = current_time;
+                        }
+                        break;
+                    }
+                }
+            }
+            
+            // 执行当前任务
+            if (current_task_index != -1 && tasks[current_task_index].remaining_time > 0) {
+                tasks[current_task_index].state = 1; // 运行状态
+                tasks[current_task_index].remaining_time--;
+                time_quantum_counter++;
+                
+                // 记录执行日志
+                if (log_count < MAX_LOG_SIZE) {
+                    execution_log[log_count].time = current_time;
+                    execution_log[log_count].task_id = tasks[current_task_index].id;
+                    strcpy(execution_log[log_count].status, "RUNNING");
+                    execution_log[log_count].remaining_time = tasks[current_task_index].remaining_time;
+                    log_count++;
+                }
+                
+                printf("时间 %d: 执行任务 %s (剩余时间: %d)\n", 
+                       current_time, tasks[current_task_index].name, tasks[current_task_index].remaining_time);
+                
+                // 检查任务是否完成
+                if (tasks[current_task_index].remaining_time <= 0) {
+                    tasks[current_task_index].state = 2; // 完成状态
+                    tasks[current_task_index].completion_time = current_time + 1;
+                    tasks[current_task_index].turnaround_time = 
+                        tasks[current_task_index].completion_time - tasks[current_task_index].arrival_time;
+                    tasks[current_task_index].waiting_time = 
+                        tasks[current_task_index].turnaround_time - tasks[current_task_index].burst_time;
+                    
+                    // 记录完成日志
+                    if (log_count < MAX_LOG_SIZE) {
+                        execution_log[log_count].time = current_time + 1;
+                        execution_log[log_count].task_id = tasks[current_task_index].id;
+                        strcpy(execution_log[log_count].status, "COMPLETED");
+                        execution_log[log_count].remaining_time = 0;
+                        log_count++;
+                    }
+                    
+                    printf("时间 %d: 任务 %s 完成\n", current_time + 1, tasks[current_task_index].name);
+                    remaining_tasks--;
+                    current_task_index = -1; // 任务完成，设置为无任务运行
+                }
+            }
+        } else {
+            // 没有就绪任务，CPU空闲
+            printf("时间 %d: 无就绪任务，CPU 空闲\n", current_time);
+            
+            // 记录空闲日志
+            if (log_count < MAX_LOG_SIZE) {
+                execution_log[log_count].time = current_time;
+                execution_log[log_count].task_id = -1;
+                strcpy(execution_log[log_count].status, "IDLE");
+                execution_log[log_count].remaining_time = 0;
+                log_count++;
+            }
+        }
+        
+        current_time++;
+        
+        // 等待用户按键
+        printf("按任意键继续，按 'q' 退出调度: ");
+        char ch = _getch();
+        printf("\n");
+        if (ch == 'q' || ch == 'Q') {
+            break;
+        }
+    }
+    
+    printf("\n调度完成！\n");
+    
+    // 打印统计信息
+    printf("\n=== 调度统计 ===\n");
+    printf("%-10s %-10s %-10s %-10s %-15s %-15s\n", 
+           "任务", "到达时间", "执行时间", "完成时间", "周转时间", "等待时间");
+    for (int i = 0; i < task_count; i++) {
+        printf("%-10s %-10d %-10d %-10d %-15d %-15d\n",
+               tasks[i].name, tasks[i].arrival_time, tasks[i].burst_time, 
+               tasks[i].completion_time, tasks[i].turnaround_time, tasks[i].waiting_time);
+    }
+}
+
+void print_task_list() {
+    if (task_count == 0) {
+        printf("没有任务。\n");
+        return;
+    }
+    
+    printf("\n=== 任务列表 ===\n");
+    printf("%-5s %-15s %-8s %-10s %-12s %-12s\n", 
+           "ID", "名称", "优先级", "执行时间", "到达时间", "状态");
+    for (int i = 0; i < task_count; i++) {
+        char state_str[10];
+        switch (tasks[i].state) {
+            case 0: strcpy(state_str, "就绪"); break;
+            case 1: strcpy(state_str, "运行"); break;
+            case 2: strcpy(state_str, "完成"); break;
+            default: strcpy(state_str, "未知"); break;
+        }
+        printf("%-5d %-15s %-8d %-10d %-12d %-12s\n",
+               tasks[i].id, tasks[i].name, tasks[i].priority, 
+               tasks[i].burst_time, tasks[i].arrival_time, state_str);
+    }
+}
+
+void print_execution_log() {
+    if (log_count == 0) {
+        printf("没有执行日志。\n");
+        return;
+    }
+    
+    printf("\n=== 执行日志 ===\n");
+    printf("%-8s %-10s %-12s %-15s\n", "时间", "任务ID", "状态", "剩余时间");
+    for (int i = 0; i < log_count; i++) {
+        char task_name[20] = "IDLE";
+        if (execution_log[i].task_id != -1) {
+            for (int j = 0; j < task_count; j++) {
+                if (tasks[j].id == execution_log[i].task_id) {
+                    strcpy(task_name, tasks[j].name);
+                    break;
+                }
+            }
+        }
+        printf("%-8d %-10s %-12s %-15d\n",
+               execution_log[i].time, task_name, execution_log[i].status, execution_log[i].remaining_time);
+    }
+}
+
+void save_log_to_file() {
+    FILE *file = fopen("execution_log.txt", "w");
+    if (file == NULL) {
+        printf("无法创建文件！\n");
+        return;
+    }
+    
+    fprintf(file, "=== 调度执行日志 ===\n");
+    fprintf(file, "总任务数: %d\n", task_count);
+    fprintf(file, "时间片长度: %d\n", quantum);
+    fprintf(file, "时间: %s", ctime(&time(NULL)));  // 添加当前时间
+    fprintf(file, "\n");
+    
+    // 保存任务信息
+    fprintf(file, "=== 任务信息 ===\n");
+    fprintf(file, "%-5s %-15s %-8s %-10s %-12s\n", 
+            "ID", "名称", "优先级", "执行时间", "到达时间");
+    for (int i = 0; i < task_count; i++) {
+        char state_str[10];
+        switch (tasks[i].state) {
+            case 0: strcpy(state_str, "就绪"); break;
+            case 1: strcpy(state_str, "运行"); break;
+            case 2: strcpy(state_str, "完成"); break;
+            default: strcpy(state_str, "未知"); break;
+        }
+        fprintf(file, "%-5d %-15s %-8d %-10d %-12d\n",
+                tasks[i].id, tasks[i].name, tasks[i].priority, 
+                tasks[i].burst_time, tasks[i].arrival_time);
+    }
+    fprintf(file, "\n");
+    
+    // 保存执行日志
+    fprintf(file, "=== 执行日志 ===\n");
+    fprintf(file, "%-8s %-10s %-12s %-15s\n", "时间", "任务ID", "状态", "剩余时间");
+    for (int i = 0; i < log_count; i++) {
+        fprintf(file, "%-8d %-10d %-12s %-15d\n",
+                execution_log[i].time, execution_log[i].task_id, 
+                execution_log[i].status, execution_log[i].remaining_time);
+    }
+    
+    fprintf(file, "\n");
+    
+    // 保存统计信息
+    fprintf(file, "=== 调度统计 ===\n");
+    fprintf(file, "%-10s %-10s %-10s %-10s %-15s %-15s\n", 
+            "任务", "到达时间", "执行时间", "完成时间", "周转时间", "等待时间");
+    for (int i = 0; i < task_count; i++) {
+        fprintf(file, "%-10s %-10d %-10d %-10d %-15d %-15d\n",
+                tasks[i].name, tasks[i].arrival_time, tasks[i].burst_time, 
+                tasks[i].completion_time, tasks[i].turnaround_time, tasks[i].waiting_time);
+    }
+    
+    fclose(file);
+    printf("执行日志已保存到 execution_log.txt\n");
+}
+
+void load_log_from_file() {
+    FILE *file = fopen("execution_log.txt", "r");
+    if (file == NULL) {
+        printf("文件不存在！\n");
+        return;
+    }
+    
+    char line[256];
+    int reading_tasks = 0;
+    int reading_log = 0;
+    int reading_stats = 0;
+    
+    task_count = 0;
+    log_count = 0;
+    
+    while (fgets(line, sizeof(line), file)) {
+        // 检查是否是任务信息部分
+        if (strstr(line, "=== 任务信息 ===")) {
+            reading_tasks = 1;
+            reading_log = 0;
+            reading_stats = 0;
+            continue;
+        }
+        
+        // 检查是否是执行日志部分
+        if (strstr(line, "=== 执行日志 ===")) {
+            reading_tasks = 0;
+            reading_log = 1;
+            reading_stats = 0;
+            continue;
+        }
+        
+        // 检查是否是统计信息部分
+        if (strstr(line, "=== 调度统计 ===")) {
+            reading_tasks = 0;
+            reading_log = 0;
+            reading_stats = 1;
+            continue;
+        }
+        
+        // 跳过标题行和分隔行
+        if (strstr(line, "ID") && strstr(line, "名称")) continue;
+        if (strstr(line, "时间") && strstr(line, "任务ID")) continue;
+        if (strstr(line, "任务") && strstr(line, "到达时间")) continue;
+        if (line[0] == '=') continue;  // 跳过分隔线
+        if (strstr(line, "总任务数:") || strstr(line, "时间片长度:")) continue;
+        if (strstr(line, "时间:")) continue;
+        
+        if (reading_tasks && strlen(line) > 10) {  // 确保不是空行
+            // 解析任务信息
+            Task new_task;
+            if (sscanf(line, "%d %s %d %d %d",
+                      &new_task.id,
+                      new_task.name,
+                      &new_task.priority,
+                      &new_task.burst_time,
+                      &new_task.arrival_time) == 5) {
+                new_task.remaining_time = new_task.burst_time;
+                new_task.state = 0; // 就绪状态
+                new_task.start_time = -1;
+                new_task.completion_time = -1;
+                new_task.waiting_time = 0;
+                new_task.turnaround_time = 0;
+                
+                tasks[task_count] = new_task;
+                task_count++;
+            }
+        } else if (reading_log && strlen(line) > 10) {
+            // 解析执行日志
+            if (sscanf(line, "%d %d %s %d",
+                      &execution_log[log_count].time,
+                      &execution_log[log_count].task_id,
+                      execution_log[log_count].status,
+                      &execution_log[log_count].remaining_time) == 4) {
+                log_count++;
+            }
+        }
+    }
+    
+    fclose(file);
+    printf("执行日志已从文件加载，共加载 %d 个任务和 %d 条日志记录。\n", task_count, log_count);
+}
+
+void replay_log() {
+    if (log_count == 0) {
+        printf("没有可重放的日志。\n");
+        return;
+    }
+    
+    printf("开始重放执行日志...\n\n");
+    printf("时间\t任务\t\t状态\t\t剩余时间\n");
+    printf("------------------------------------------------\n");
+    
+    for (int i = 0; i < log_count; i++) {
+        char task_name[20] = "IDLE";
+        if (execution_log[i].task_id != -1) {
+            for (int j = 0; j < task_count; j++) {
+                if (tasks[j].id == execution_log[i].task_id) {
+                    strcpy(task_name, tasks[j].name);
+                    break;
+                }
+            }
+        }
+        
+        printf("%d\t%-12s\t%-12s\t%d\n",
+               execution_log[i].time, task_name, 
+               execution_log[i].status, execution_log[i].remaining_time);
+        
+        // 每显示10条记录暂停一下，让用户能够阅读
+        if ((i + 1) % 10 == 0 && i + 1 < log_count) {
+            printf("\n按任意键继续重放...\n");
+            _getch();
+            printf("\n");
+        }
+    }
+    
+    printf("\n重放完成。\n");
+}
+
+void clear_screen() {
+    system("cls");
+}
